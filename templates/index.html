@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  {% if chosen.status == "대기" or chosen.status == "실행중" %}
+    <meta http-equiv="refresh" content="10">
+  {% endif %}
+
+  <title>관심 공고 모니터</title>
+
+  <style>
+    body {
+      margin: 0;
+      background: #f4f6fa;
+      color: #1d2939;
+      font-family: system-ui, sans-serif;
+    }
+    main { max-width: 1400px; margin: 32px auto; padding: 0 20px; }
+    .card {
+      background: white;
+      border: 1px solid #e4e7ec;
+      border-radius: 14px;
+      padding: 24px;
+      margin-bottom: 20px;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 20px;
+    }
+    textarea { width: 95%; min-height: 130px; }
+    input, select, textarea, button {
+      padding: 9px;
+      border: 1px solid #ccd3df;
+      border-radius: 7px;
+      font: inherit;
+    }
+    button, .button {
+      display: inline-block;
+      background: #2457d6;
+      color: white;
+      border: 0;
+      cursor: pointer;
+      text-decoration: none;
+      padding: 10px 16px;
+      border-radius: 7px;
+    }
+    label { display: inline-block; margin: 5px 8px 5px 0; }
+    .muted { color: #667085; }
+    .error { color: #b42318; }
+    .scroll { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th, td {
+      padding: 11px;
+      text-align: left;
+      border-bottom: 1px solid #eaecf0;
+      vertical-align: top;
+    }
+    th { background: #f8f9fc; white-space: nowrap; }
+    h1 { margin-bottom: 5px; }
+  </style>
+</head>
+
+<body>
+<main>
+  <h1>관심 공고 모니터</h1>
+  <p class="muted">
+    시뮬레이션 · 해석 · CAD · PLM · Data center
+  </p>
+
+  {% if login_only %}
+    <section class="card">
+      <h2>로그인</h2>
+      <p class="error">{{ error }}</p>
+      <form method="post" action="/login/">
+        {% csrf_token %}
+        <p>
+          <input name="username" placeholder="아이디"
+                 autocomplete="username" required>
+        </p>
+        <p>
+          <input type="password" name="password" placeholder="비밀번호"
+                 autocomplete="current-password" required>
+        </p>
+        <button>로그인</button>
+      </form>
+    </section>
+
+  {% else %}
+    <form method="post" action="/logout/">
+      {% csrf_token %}
+      <button>로그아웃</button>
+    </form>
+
+    <section class="card">
+      <h2>검색 설정</h2>
+      <form method="post" action="/save/">
+        {% csrf_token %}
+
+        <div class="grid">
+          <div>
+            <h3>포함 키워드</h3>
+            <textarea name="keywords" required>{{ keywords_text }}</textarea>
+            <p class="muted">
+              줄바꿈 또는 쉼표로 구분합니다. 하나라도 일치하면 포함합니다.
+            </p>
+          </div>
+          <div>
+            <h3>제외 키워드</h3>
+            <textarea name="exclude">{{ exclude_text }}</textarea>
+            <p class="muted">
+              제외어가 발견되면 포함 키워드와 일치해도 제외합니다.
+            </p>
+          </div>
+        </div>
+
+        <h3>기간 — 공고 게시일 기준</h3>
+        <p>
+          <select name="mode">
+            <option value="recent"
+              {% if config.mode == "recent" %}selected{% endif %}>
+              최근 N일
+            </option>
+            <option value="fixed"
+              {% if config.mode == "fixed" %}selected{% endif %}>
+              날짜 직접 지정
+            </option>
+          </select>
+
+          최근
+          <input type="number" name="days" min="1" max="366"
+                 value="{{ config.days }}" style="width:75px">
+          일
+        </p>
+        <p>
+          시작일
+          <input type="date" name="start" value="{{ config.start }}">
+          종료일
+          <input type="date" name="end" value="{{ config.end }}">
+        </p>
+
+        <h3>공고 종류</h3>
+        {% for kind in types %}
+          <label>
+            <input type="checkbox" name="types" value="{{ kind }}"
+              {% if kind in config.types %}checked{% endif %}>
+            {{ kind }}
+          </label>
+        {% endfor %}
+
+        <p>
+          <label>
+            <input type="checkbox" name="include_closed"
+              {% if config.include_closed %}checked{% endif %}>
+            마감된 공고 포함
+          </label>
+        </p>
+
+        <p>
+          <label>
+            <input type="checkbox" name="auto"
+              {% if config.auto %}checked{% endif %}>
+            매일 오전 8시 / 오후 1시 자동 검색 — 한국시간
+          </label>
+        </p>
+
+        <button>설정 저장</button>
+        <p class="muted">
+          먼저 설정을 저장한 뒤 ‘지금 검색’을 눌러 주세요.
+          현재 버전은 공고 제목만 검색합니다.
+        </p>
+      </form>
+    </section>
+
+    <section class="card">
+      <h2>공고 검색</h2>
+
+      <form method="post" action="/search/">
+        {% csrf_token %}
+        <button>지금 검색</button>
+      </form>
+
+      {% if chosen %}
+        <p>
+          상태: <strong>{{ chosen.status }}</strong>
+          · 등록시각: {{ chosen.created }}
+        </p>
+
+        {% if chosen.error %}
+          <p class="error">{{ chosen.error }}</p>
+        {% endif %}
+
+        {% if chosen.status == "완료" %}
+          <p>
+            조회 기간: {{ result.start }} ~ {{ result.end }}
+            · 선별 결과: <strong>{{ rows|length }}건</strong>
+          </p>
+          <a class="button" href="/excel/{{ chosen.id }}/">
+            Excel 다운로드
+          </a>
+        {% endif %}
+
+        {% if chosen.status == "대기" or chosen.status == "실행중" %}
+          <p class="muted">
+            처리 중에는 10초마다 새로고침됩니다.
+            ‘대기’가 지속되면 worker 실행 여부를 확인해 주세요.
+          </p>
+        {% endif %}
+      {% endif %}
+    </section>
+
+    <section class="card">
+      <h2>검색 결과</h2>
+      <div class="scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>구분</th>
+              <th>종류</th>
+              <th>공고명</th>
+              <th>일치 키워드</th>
+              <th>기관</th>
+              <th>마감일시</th>
+              <th>원문</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in rows %}
+              <tr>
+                <td>{{ row.구분 }}</td>
+                <td>{{ row.공고종류 }}</td>
+                <td>{{ row.공고명 }}</td>
+                <td>{{ row.일치
